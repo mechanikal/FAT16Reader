@@ -63,7 +63,7 @@ struct cluster_chain_t *get_chain_fat16(const void * const buffer, size_t size, 
         }
         cluster= read_cluster16(cluster,buffer);
     }
-    if(clustersChain->cluster_count == 0){
+    if(clustersChain->cluster_count == 0 && cluster>=2){
         cluster_free(clustersChain);
         errno = EINVAL;
         return NULL;

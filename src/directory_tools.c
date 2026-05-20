@@ -125,7 +125,12 @@ struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path,struct dir
         if(strcmp(dir_path,temp_entry.name)==0){
             if(!temp_entry.is_directory){
                 errno = ENOTDIR;
+                free(dir);
                 return NULL;
+            }
+            if(temp_entry.first_cluster == 0){
+                free(dir);
+                return root_dir_open(pvolume);
             }
             dir->cluster_chain = get_chain_fat16(pvolume->file_allocation_table.data,temp_entry.size,temp_entry.first_cluster);
             if(dir->cluster_chain==NULL){
@@ -140,7 +145,6 @@ struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path,struct dir
                 errno = ENOMEM;
                 return NULL;
             }
-            char * p = malloc(sizeof (char ));
             for (int j = 0; j < (int)(dir->cluster_chain->cluster_count); j++){
                 cluster_to_sector = pvolume->first_data_sector + (*(dir->cluster_chain->clusters+j)-2)*pvolume->bs.sectors_per_cluster;
                 if(disk_read(pvolume->disk, (int)cluster_to_sector, dir->data + data_offset, pvolume->bs.sectors_per_cluster)==-1){
