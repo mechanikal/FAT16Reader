@@ -50,7 +50,7 @@ struct volume_t{
     struct disk_t *disk;
     struct table file_allocation_table;
     char * directory;
-    struct clusters_chain_t cluster_chain;
+    struct cluster_chain_t cluster_chain;
 };
 
 struct volume_t* fat_open(struct disk_t* pdisk, uint32_t first_sector);

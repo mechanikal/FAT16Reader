@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "include/table_tools.h"
 
 #define DAY_MASK 31
 #define MONTH_MASK 480
@@ -17,9 +18,11 @@
 
 struct dir_t{
     char *data;
-    size_t entries;
-    size_t entry_size;
+    size_t size;
+    //size_t entries;
+    //size_t entry_size;
     size_t offset;
+    struct cluster_chain_t* cluster_chain;
 };
 
 struct dir_entry_t{
@@ -44,5 +47,9 @@ struct dir_entry_t{
 };
 
 int read_entry(struct dir_entry_t *entry, char * buffer, size_t buffer_size, size_t *offset);
+int dir_read(struct dir_t* pdir, struct dir_entry_t* pentry);
+struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path, struct dir_t * current_directory);
+struct dir_t* root_dir_open(struct volume_t* pvolume);
+int dir_close(struct dir_t* pdir);
 
 #endif //FAT16READER_DIRECTORY_TOOLS_H

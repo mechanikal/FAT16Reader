@@ -10,12 +10,12 @@
 
 #define LAST_CLUSTER16 0xFFF8
 
-struct clusters_chain_t {
+struct cluster_chain_t {
     uint16_t *clusters;
-    size_t size;
+    size_t cluster_count;
 };
 
-struct clusters_chain_t *get_chain_fat16(const void * buffer, size_t size, uint16_t first_cluster);
-void cluster_free(struct clusters_chain_t * clustersChain);
+struct cluster_chain_t *get_chain_fat16(const void * buffer, size_t size, uint16_t first_cluster);
+void cluster_free(struct cluster_chain_t * clusters_chain);
 
 #endif //FAT16READER_CLUSTER_TOOLS_H

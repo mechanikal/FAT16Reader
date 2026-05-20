@@ -5,34 +5,34 @@
 #include <errno.h>
 
 // create object which will store cluster information
-struct clusters_chain_t * cluster_innit(){
-    struct clusters_chain_t *clustersChain = malloc(sizeof(struct clusters_chain_t));
+struct cluster_chain_t * cluster_innit(){
+    struct cluster_chain_t *clustersChain = malloc(sizeof(struct cluster_chain_t));
     if(clustersChain==NULL) {
         errno = ENOMEM;
         return NULL;
     }
-    clustersChain->size=0;
+    clustersChain->cluster_count=0;
     clustersChain->clusters=NULL;
     return clustersChain;
 }
-void cluster_free(struct clusters_chain_t * clustersChain){
-    if(clustersChain->size != 0)
-        free(clustersChain->clusters);
-    clustersChain->clusters=NULL;
-    clustersChain->size=0;
-    free(clustersChain);
+void cluster_free(struct cluster_chain_t * clusters_chain){
+    if(clusters_chain->cluster_count != 0)
+        free(clusters_chain->clusters);
+    clusters_chain->clusters=NULL;
+    clusters_chain->cluster_count=0;
+    free(clusters_chain);
 }
 
 // add cluster to chain
-int add_cluster(struct clusters_chain_t * clustersChain, uint16_t cluster){
-    uint16_t * temp = realloc(clustersChain->clusters,(clustersChain->size+1)* sizeof(uint16_t));
+int add_cluster(struct cluster_chain_t * clustersChain, uint16_t cluster){
+    uint16_t * temp = realloc(clustersChain->clusters, (clustersChain->cluster_count + 1) * sizeof(uint16_t));
     if(temp==NULL){
         errno = ENOMEM;
         return 1;
     }
     clustersChain->clusters=temp;
-    *(clustersChain->clusters+clustersChain->size)=cluster;
-    clustersChain->size ++;
+    *(clustersChain->clusters+clustersChain->cluster_count)=cluster;
+    clustersChain->cluster_count ++;
     return 0;
 }
 
@@ -43,11 +43,11 @@ uint16_t read_cluster16(uint16_t previous,const void * const buffer){
 }
 
 // read cluster chain
-struct clusters_chain_t *get_chain_fat16(const void * const buffer, size_t size, uint16_t first_cluster){
-    struct clusters_chain_t *clustersChain;
+struct cluster_chain_t *get_chain_fat16(const void * const buffer, size_t size, uint16_t first_cluster){
+    struct cluster_chain_t *clustersChain;
     uint16_t cluster=first_cluster;
 
-    if(buffer==NULL||size<=0) {
+    if(buffer==NULL||size<0) { // allow size 0 for directories
         errno = EFAULT;
         return NULL;
     }
@@ -63,7 +63,7 @@ struct clusters_chain_t *get_chain_fat16(const void * const buffer, size_t size,
         }
         cluster= read_cluster16(cluster,buffer);
     }
-    if(clustersChain->size==0){
+    if(clustersChain->cluster_count == 0){
         cluster_free(clustersChain);
         errno = EINVAL;
         return NULL;

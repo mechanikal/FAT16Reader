@@ -1,6 +1,5 @@
 #include "include/file_tools.h"
 #include "include/table_tools.h"
-#include "include/directory_tools.h"
 #include "include/disc_tools.h"
 #include "include/cluster_tools.h"
 
@@ -8,11 +7,11 @@
 #include <errno.h>
 
 //file management
-struct file_t* file_open(struct volume_t* pvolume, const char* file_name){
+struct file_t* file_open(struct volume_t* pvolume, const char* file_name,struct dir_t directory){
     struct file_t* file;
     struct dir_entry_t temp_entry;
-    size_t actual_size = 0;
-    size_t sector_size;
+    size_t occupied_clusters = 0;
+    size_t cluster_size;
     size_t offset = 0;
     size_t data_offset = 0;
     size_t cluster_to_sector;
@@ -27,28 +26,32 @@ struct file_t* file_open(struct volume_t* pvolume, const char* file_name){
         return NULL;
     }
     for (int i = 0; i < (int)(pvolume->bs.root_entry_count); ++i) {
-        if(read_entry(&temp_entry,pvolume->directory,pvolume->bs.root_entry_count*pvolume->bs.bytes_per_sector,&offset)) {
+        if(read_entry(&temp_entry,directory.data,directory.size,&offset)) {
             free(file);
             return NULL;
         }
         if(strcmp(file_name,temp_entry.name)==0){
+            if(temp_entry.is_directory){
+                errno = EISDIR;
+                return NULL;
+            }
             file->size=temp_entry.size;
             file->chain = get_chain_fat16(pvolume->file_allocation_table.data,temp_entry.size,temp_entry.first_cluster);
             if(file->chain==NULL){
                 free(file);
                 return NULL;
             }
-            sector_size = pvolume->bs.sectors_per_cluster*pvolume->bs.bytes_per_sector;
-            while (actual_size < file->size){
-                actual_size += sector_size;
+            cluster_size = pvolume->bs.sectors_per_cluster * pvolume->bs.bytes_per_sector;
+            while (occupied_clusters * cluster_size < file->size){
+                occupied_clusters ++;
             }
-            file->data= malloc(actual_size);
+            file->data= malloc(occupied_clusters * cluster_size);
             if(file->data==NULL){
                 free(file);
                 errno = ENOMEM;
                 return NULL;
             }
-            for (int j = 0; j < (int)(file->chain->size); j++){
+            for (int j = 0; j < (int)(file->chain->cluster_count); j++){
                 cluster_to_sector = pvolume->first_data_sector + (*(file->chain->clusters+j)-2)*pvolume->bs.sectors_per_cluster;
                 if(disk_read(pvolume->disk, (int)cluster_to_sector, file->data + data_offset, pvolume->bs.sectors_per_cluster)==-1){
                     free(file->data);

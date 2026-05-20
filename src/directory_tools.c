@@ -3,9 +3,10 @@
 #include <string.h>
 #include <stdint.h>
 #include "include/directory_tools.h"
-#include "include/table_tools.h"
+#include "include/disc_tools.h"
+#include "internal.h"
 
-//read directory entry
+// read single directory entry, shift offset
 int read_entry(struct dir_entry_t *entry, char * buffer, size_t buffer_size, size_t *offset){
     char c;
     uint8_t name_len=0;
@@ -74,14 +75,9 @@ int read_entry(struct dir_entry_t *entry, char * buffer, size_t buffer_size, siz
     return 0;
 }
 
-// dir manager
-struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path) {
-    if(pvolume==NULL||dir_path==NULL){
+struct dir_t* root_dir_open(struct volume_t* pvolume) {
+    if(pvolume==NULL){
         errno=EFAULT;
-        return NULL;
-    }
-    if(strcmp(dir_path,"\\")!=0){
-        errno=ENOENT;
         return NULL;
     }
     struct dir_t *dir;
@@ -90,36 +86,101 @@ struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path) {
         errno = ENOMEM;
         return NULL;
     }
-    dir->entries=pvolume->bs.root_entry_count;
-    dir->entry_size=32;
+    dir->size=ENTRY_SIZE*pvolume->bs.root_entry_count;
     dir->data=pvolume->directory;
     dir->offset = 0;
+    dir->cluster_chain = NULL;
     return dir;
 }
+
+// dir manager
+struct dir_t* dir_open(struct volume_t* pvolume, const char* dir_path,struct dir_t * current_directory){
+    struct dir_t* dir;
+    struct dir_entry_t temp_entry;
+    size_t offset = 0;
+    size_t cluster_size;
+    size_t data_offset = 0;
+    size_t cluster_to_sector;
+
+    if(pvolume==NULL||dir_path==NULL){
+        errno=EFAULT;
+        return NULL;
+    }
+
+    dir = malloc(sizeof(struct dir_t));
+    if(dir==NULL){
+        errno=ENOMEM;
+        return NULL;
+    }
+    dir->size = 0;
+    dir->data = NULL;
+    dir->offset = 0;
+    dir->cluster_chain = NULL;
+
+    for (int i = 0; i < (int)(pvolume->bs.root_entry_count); ++i) {
+        if(read_entry(&temp_entry,current_directory->data,current_directory->size,&offset)) {
+            free(dir);
+            return NULL;
+        }
+        if(strcmp(dir_path,temp_entry.name)==0){
+            if(!temp_entry.is_directory){
+                errno = ENOTDIR;
+                return NULL;
+            }
+            dir->cluster_chain = get_chain_fat16(pvolume->file_allocation_table.data,temp_entry.size,temp_entry.first_cluster);
+            if(dir->cluster_chain==NULL){
+                free(dir);
+                return NULL;
+            }
+            cluster_size = pvolume->bs.sectors_per_cluster * pvolume->bs.bytes_per_sector;
+            dir->size = dir->cluster_chain->cluster_count * cluster_size;
+            dir->data= malloc(dir->size);
+            if(dir->data==NULL){
+                free(dir);
+                errno = ENOMEM;
+                return NULL;
+            }
+            char * p = malloc(sizeof (char ));
+            for (int j = 0; j < (int)(dir->cluster_chain->cluster_count); j++){
+                cluster_to_sector = pvolume->first_data_sector + (*(dir->cluster_chain->clusters+j)-2)*pvolume->bs.sectors_per_cluster;
+                if(disk_read(pvolume->disk, (int)cluster_to_sector, dir->data + data_offset, pvolume->bs.sectors_per_cluster)==-1){
+                    free(dir->data);
+                    free(dir);
+                    return NULL;
+                }
+                data_offset+=pvolume->bs.bytes_per_sector*pvolume->bs.sectors_per_cluster;
+                if(data_offset>=dir->size)break;
+            }
+            return dir;
+        }
+    }
+    return NULL;
+}
+
 int dir_read(struct dir_t* pdir, struct dir_entry_t* pentry) {
     if(pdir==NULL||pentry==NULL){
         errno=EFAULT;
         return 1;
     }
     while (1){
-        if (read_entry(pentry, pdir->data, pdir->entries * pdir->entry_size, &pdir->offset) != 0) {
+        if (read_entry(pentry, pdir->data, pdir->size, &pdir->offset) != 0) {
             return 1;
         }
         if((unsigned char )*(pentry->name)!=0xE5){
             break;
         }
     }
-
     return 0;
 }
+
 int dir_close(struct dir_t* pdir){
     if(pdir==NULL){
         errno = EFAULT;
         return -1;
     }
     pdir->data=NULL;
-    pdir->offset=0;
-    pdir->entries=0;
+    pdir->size = 0;
+    pdir->offset = 0;
     free(pdir);
     return 0;
 }
